@@ -1,45 +1,172 @@
+import mysql.connector
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 
 # ==========================================
-# TRAINING DATA
+# 1. CONNECT TO MYSQL
 # ==========================================
-# Example historical hospital queue data
 
-data = {
+db = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="YOUR_MYSQL_PASSWORD",
+    database="hospital_queue"
+)
+
+print("MySQL connected successfully!")
+
+
+# ==========================================
+# 2. GET ACTUAL QUEUE DATA
+# ==========================================
+
+cursor = db.cursor(dictionary=True)
+
+query = """
+SELECT
+    q.queue_id,
+    q.patient_id,
+    q.doctor_id,
+    q.status,
+    q.waiting_time,
+    q.start_time,
+    q.end_time
+FROM queues q
+"""
+
+cursor.execute(query)
+
+queue_data = cursor.fetchall()
+
+
+# ==========================================
+# 3. CHECK QUEUE DATA
+# ==========================================
+
+print("\nCurrent Queue Data:")
+
+for row in queue_data:
+    print(row)
+
+
+# ==========================================
+# 4. COUNT PATIENTS CURRENTLY WAITING
+# ==========================================
+
+waiting_query = """
+SELECT COUNT(*) AS patients_waiting
+FROM queues
+WHERE status = 'Waiting'
+"""
+
+cursor.execute(waiting_query)
+
+waiting_result = cursor.fetchone()
+
+patients_waiting = waiting_result["patients_waiting"]
+
+
+# ==========================================
+# 5. COUNT AVAILABLE DOCTORS
+# ==========================================
+
+doctor_query = """
+SELECT COUNT(*) AS doctors_available
+FROM doctors
+"""
+
+cursor.execute(doctor_query)
+
+doctor_result = cursor.fetchone()
+
+doctors_available = doctor_result["doctors_available"]
+
+
+# ==========================================
+# 6. CALCULATE AVERAGE SERVICE TIME
+# ==========================================
+
+service_query = """
+SELECT
+    AVG(
+        TIMESTAMPDIFF(
+            MINUTE,
+            start_time,
+            end_time
+        )
+    ) AS average_service_time
+
+FROM queues
+
+WHERE
+    status = 'Served'
+    AND start_time IS NOT NULL
+    AND end_time IS NOT NULL
+"""
+
+cursor.execute(service_query)
+
+service_result = cursor.fetchone()
+
+average_service_time = service_result["average_service_time"]
+
+
+# ==========================================
+# 7. HANDLE EMPTY SERVICE TIME
+# ==========================================
+
+if average_service_time is None:
+
+    # Use 10 minutes if there is not
+    # enough historical data yet
+
+    average_service_time = 10
+
+else:
+
+    average_service_time = float(
+        average_service_time
+    )
+
+
+# ==========================================
+# 8. SAMPLE TRAINING DATA
+# ==========================================
+#
+# This is temporary training data.
+# Later we will train using your
+# actual historical hospital data.
+#
+
+training_data = {
     "patients_waiting": [
         2, 4, 6, 8, 10,
-        12, 14, 16, 18, 20,
-        5, 9, 15, 25
+        12, 14, 16, 18, 20
     ],
 
     "doctors_available": [
         1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1,
-        2, 2, 3, 4
+        1, 1, 1, 1, 1
     ],
 
     "average_service_time": [
         10, 10, 10, 10, 10,
-        10, 10, 10, 10, 10,
-        10, 10, 10, 10
+        10, 10, 10, 10, 10
     ],
 
     "waiting_time": [
         20, 40, 60, 80, 100,
-        120, 140, 160, 180, 200,
-        25, 45, 50, 65
+        120, 140, 160, 180, 200
     ]
 }
 
 
-# Convert data into DataFrame
-df = pd.DataFrame(data)
+df = pd.DataFrame(training_data)
 
 
 # ==========================================
-# INPUT FEATURES
+# 9. MACHINE LEARNING FEATURES
 # ==========================================
 
 X = df[
@@ -50,63 +177,86 @@ X = df[
     ]
 ]
 
-
-# Target value
 y = df["waiting_time"]
 
 
 # ==========================================
-# CREATE MACHINE LEARNING MODEL
+# 10. TRAIN MODEL
 # ==========================================
 
 model = LinearRegression()
 
-
-# Train the model
 model.fit(X, y)
 
 
 # ==========================================
-# PREDICT WAITING TIME
+# 11. USE ACTUAL MYSQL DATA
 # ==========================================
 
-patients_waiting = 8
-doctors_available = 2
-average_service_time = 10
+actual_data = pd.DataFrame({
 
+    "patients_waiting": [
+        patients_waiting
+    ],
 
-new_patient = pd.DataFrame({
-    "patients_waiting": [patients_waiting],
-    "doctors_available": [doctors_available],
-    "average_service_time": [average_service_time]
+    "doctors_available": [
+        doctors_available
+    ],
+
+    "average_service_time": [
+        average_service_time
+    ]
 })
 
 
-predicted_waiting_time = model.predict(new_patient)
+# ==========================================
+# 12. PREDICT WAITING TIME
+# ==========================================
+
+prediction = model.predict(actual_data)
+
+predicted_waiting_time = prediction[0]
 
 
 # ==========================================
-# DISPLAY RESULT
+# 13. DISPLAY RESULT
 # ==========================================
 
-print("--------------------------------------")
+print("\n======================================")
 print("HOSPITAL QUEUE AI")
-print("--------------------------------------")
+print("======================================")
 
-print("Patients waiting:", patients_waiting)
+print(
+    "Patients currently waiting:",
+    patients_waiting
+)
 
-print("Doctors available:", doctors_available)
+print(
+    "Doctors available:",
+    doctors_available
+)
 
 print(
     "Average service time:",
-    average_service_time,
+    round(average_service_time, 2),
     "minutes"
 )
 
 print(
     "Predicted waiting time:",
-    round(predicted_waiting_time[0], 2),
+    round(predicted_waiting_time, 2),
     "minutes"
 )
 
-print("--------------------------------------")
+print("======================================")
+
+
+# ==========================================
+# 14. CLOSE MYSQL CONNECTION
+# ==========================================
+
+cursor.close()
+
+db.close()
+
+print("\nMySQL connection closed.")
