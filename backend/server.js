@@ -5,6 +5,7 @@ const db = require("./db");
 
 const patientRoutes = require("./routes/patients");
 const doctorRoutes = require("./routes/doctors");
+const queueRoutes = require("./routes/queues");
 
 const app = express();
 
@@ -20,12 +21,17 @@ app.use("/patients", patientRoutes);
 app.use("/doctors", doctorRoutes);
 
 
+// Queue API
+app.use("/queue", queueRoutes);
+
+
 // Home
 app.get("/", (req, res) => {
     res.send("Hospital Queue Management Backend is running!");
 });
 
 
+// Start server
 const PORT = 5000;
 
 app.listen(PORT, () => {
